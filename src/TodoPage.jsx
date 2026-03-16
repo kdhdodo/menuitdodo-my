@@ -69,8 +69,11 @@ export default function TodoPage() {
   const [showLinkForm, setShowLinkForm] = useState(false);
   const [saving, setSaving]         = useState(false);
   const timelineRef                 = useRef(null);
+  const textareaRef                 = useRef(null);
   const dragItem                    = useRef(null);
   const dragOverItem                = useRef(null);
+  const [mentionQuery, setMentionQuery] = useState("");
+  const [showMention, setShowMention]   = useState(false);
   const [dragIndex, setDragIndex]   = useState(null);
   const [dropIndex, setDropIndex]   = useState(null);
   const [followers, setFollowers]   = useState({});
@@ -178,6 +181,70 @@ export default function TodoPage() {
     return results;
   }
 
+  const ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRqbnNid3NndXFpcnNraW11a3hoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzM1Njg3MzEsImV4cCI6MjA4OTE0NDczMX0.PkHZQsAUVzOj6c6NaEgvyfPcF6e1m7JbnNTta7ZaNjQ";
+
+  const mentionMembers = showMention
+    ? members.filter(m => {
+        const n = (m.name || m.email || "").toLowerCase();
+        return !mentionQuery || n.startsWith(mentionQuery.toLowerCase());
+      }).slice(0, 6)
+    : [];
+
+  function handleContentChange(e) {
+    const val = e.target.value;
+    const cursor = e.target.selectionStart;
+    const before = val.slice(0, cursor);
+    const match = before.match(/@([\w가-힣]*)$/);
+    if (match) { setMentionQuery(match[1]); setShowMention(true); }
+    else { setShowMention(false); }
+    setCForm(f => ({ ...f, content: val }));
+  }
+
+  function selectMention(member) {
+    const name = member.name || member.email.split("@")[0];
+    const cursor = textareaRef.current?.selectionStart ?? cForm.content.length;
+    const before = cForm.content.slice(0, cursor);
+    const match = before.match(/@([\w가-힣]*)$/);
+    const start = match ? cursor - match[0].length : cursor;
+    const newContent = cForm.content.slice(0, start) + `@${name} ` + cForm.content.slice(cursor);
+    setCForm(f => ({ ...f, content: newContent }));
+    setShowMention(false);
+    setTimeout(() => {
+      const pos = start + name.length + 2;
+      textareaRef.current?.focus();
+      textareaRef.current?.setSelectionRange(pos, pos);
+    }, 0);
+  }
+
+  function sendMentionNotifications(content, authorName) {
+    const matches = [...content.matchAll(/@([\w가-힣]+)/g)];
+    if (!matches.length) return;
+    const names = matches.map(m => m[1]);
+    const mentioned = members.filter(m => names.includes(m.name) || names.includes(m.email?.split("@")[0]));
+    if (!mentioned.length) return;
+    fetch("https://djnsbwsguqirskimukxh.supabase.co/functions/v1/invite-user", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "apikey": ANON_KEY, "Authorization": `Bearer ${ANON_KEY}` },
+      body: JSON.stringify({
+        action: "notify",
+        todoTitle: selected?.title,
+        authorName,
+        content,
+        recipients: mentioned.map(m => ({ email: m.email, name: m.name || m.email })),
+      }),
+    });
+  }
+
+  function renderContent(content) {
+    if (!content) return null;
+    const parts = content.split(/(@[\w가-힣]+)/g);
+    return parts.map((part, i) =>
+      /^@[\w가-힣]+$/.test(part)
+        ? <span key={i} style={{ color: "#7c5cfc", fontWeight: 700 }}>{part}</span>
+        : part
+    );
+  }
+
   async function addComment() {
     const isCustom = cForm.author_id === "__custom__";
     const authorName = isCustom
@@ -186,18 +253,21 @@ export default function TodoPage() {
     if (!authorName) return;
     if (!cForm.content.trim() && pendingFiles.length === 0 && pendingLinks.length === 0) return;
     setSaving(true);
+    const contentText = cForm.content.trim();
     const uploadedFiles = pendingFiles.length > 0 ? await uploadFiles(pendingFiles, selected.id) : [];
     const maxOrder = comments.reduce((max, c) => Math.max(max, c.sort_order ?? 0), 0);
     await supabase.from("todo_comments").insert({
       todo_id:     selected.id,
       author_id:   isCustom ? null : cForm.author_id,
       author_name: authorName,
-      content:     cForm.content.trim(),
+      content:     contentText,
       sort_order:  maxOrder + 1,
       attachments: uploadedFiles,
       links:       pendingLinks,
     });
+    if (contentText) sendMentionNotifications(contentText, authorName);
     setCForm(f => ({ ...f, content: "" }));
+    setShowMention(false);
     setPendingFiles([]);
     setPendingLinks([]);
     setShowLinkForm(false);
@@ -435,7 +505,7 @@ export default function TodoPage() {
                           style={{ background: "transparent", border: "none", color: "#2a2d3a", fontSize: 14, cursor: "pointer", padding: 0 }}>×</button>
                       </div>
                     </div>
-                    {c.content && <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: (c.attachments?.length || c.links?.length) ? 10 : 0 }}>{c.content}</div>}
+                    {c.content && <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: (c.attachments?.length || c.links?.length) ? 10 : 0 }}>{renderContent(c.content)}</div>}
                     {c.attachments?.length > 0 && (
                       <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: c.links?.length ? 8 : 0 }}>
                         {c.attachments.map((att, j) => <AttachmentView key={j} att={att} />)}
@@ -470,12 +540,35 @@ export default function TodoPage() {
               </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <textarea value={cForm.content} onChange={e => setCForm(f => ({ ...f, content: e.target.value }))}
-                  onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addComment(); }}}
-                  onPaste={onPaste}
-                  placeholder="내용 입력 (Enter로 등록, Shift+Enter로 줄바꿈, 이미지 Ctrl+V)"
-                  rows={1}
-                  style={{ background: "#0d0f14", border: "1px solid #1e2130", borderRadius: 7, padding: "8px 12px", color: "#e8eaf0", fontSize: 13, outline: "none", fontFamily: "inherit", resize: "none", overflowY: "hidden", lineHeight: 1.6, minHeight: 36, fieldSizing: "content" }} />
+                <div style={{ position: "relative" }}>
+                  <textarea ref={textareaRef} value={cForm.content} onChange={handleContentChange}
+                    onKeyDown={e => {
+                      if (showMention && mentionMembers.length > 0) {
+                        if (e.key === "Escape") { e.preventDefault(); setShowMention(false); return; }
+                        if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); selectMention(mentionMembers[0]); return; }
+                      }
+                      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addComment(); }
+                    }}
+                    onPaste={onPaste}
+                    placeholder="내용 입력 (Enter로 등록, Shift+Enter로 줄바꿈, @로 멘션)"
+                    rows={1}
+                    style={{ background: "#0d0f14", border: "1px solid #1e2130", borderRadius: 7, padding: "8px 12px", color: "#e8eaf0", fontSize: 13, outline: "none", fontFamily: "inherit", resize: "none", overflowY: "hidden", lineHeight: 1.6, minHeight: 36, fieldSizing: "content", width: "100%", boxSizing: "border-box" }} />
+                  {showMention && mentionMembers.length > 0 && (
+                    <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 4, background: "#1a1d26", border: "1px solid #1e2130", borderRadius: 8, overflow: "hidden", zIndex: 100, minWidth: 180, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
+                      {mentionMembers.map((m, i) => (
+                        <div key={m.id} onMouseDown={e => { e.preventDefault(); selectMention(m); }}
+                          style={{ padding: "8px 12px", fontSize: 13, cursor: "pointer", color: "#e8eaf0", borderBottom: i < mentionMembers.length - 1 ? "1px solid #1e2130" : "none", display: "flex", alignItems: "center", gap: 8 }}
+                          onMouseEnter={e => e.currentTarget.style.background = "#7c5cfc22"}
+                          onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                          <span style={{ width: 24, height: 24, borderRadius: "50%", background: "#7c5cfc44", border: "1px solid #7c5cfc88", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, color: "#7c5cfc", flexShrink: 0 }}>
+                            {(m.name || m.email || "?")[0].toUpperCase()}
+                          </span>
+                          <span>{m.name || m.email}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
 
                 {pendingFiles.length > 0 && (
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
