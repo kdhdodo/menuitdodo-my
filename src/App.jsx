@@ -6,11 +6,11 @@ import TodoPage from "./TodoPage";
 const FONT = "'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 
 const BYTES = [
-  { key: "ip",    name: "특허",     desc: "IP 관리",     url: "https://menuitdodo-ip.vercel.app",    color: "#7c5cfc", icon: "⚖️" },
-  { key: "fi",    name: "파이낸스", desc: "재무 관리",   url: "https://menuitdodo-fi.vercel.app",    color: "#4a9eff", icon: "💰" },
-  { key: "fn",    name: "마케팅",   desc: "마케팅",      url: "https://menuitdodo-fn.vercel.app",    color: "#f59e0b", icon: "📣" },
-  { key: "scm",   name: "공급망",   desc: "공급망 관리", url: "https://menuitdodo-scm.vercel.app",   color: "#10b981", icon: "🔗" },
-  { key: "sales", name: "영업",     desc: "영업 관리",   url: "https://menuitdodo-sales.vercel.app", color: "#ff5050", icon: "📊" },
+  { key: "ip",    name: "특허",     desc: "IP 관리",     url: "https://a-ip.menuit.io",    color: "#7c5cfc", icon: "⚖️" },
+  { key: "fi",    name: "파이낸스", desc: "재무 관리",   url: "https://a-fi.menuit.io",    color: "#4a9eff", icon: "💰" },
+  { key: "fn",    name: "마케팅",   desc: "마케팅",      url: "https://a-fn.menuit.io",    color: "#f59e0b", icon: "📣" },
+  { key: "scm",   name: "공급망",   desc: "공급망 관리", url: "https://a-scm.menuit.io",   color: "#10b981", icon: "🔗" },
+  { key: "sales", name: "영업",     desc: "영업 관리",   url: "https://a-sales.menuit.io", color: "#ff5050", icon: "📊" },
 ];
 
 
