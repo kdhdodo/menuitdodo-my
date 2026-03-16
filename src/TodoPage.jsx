@@ -73,8 +73,9 @@ export default function TodoPage() {
   const dragOverItem                = useRef(null);
   const [dragIndex, setDragIndex]   = useState(null);
   const [dropIndex, setDropIndex]   = useState(null);
+  const [followers, setFollowers]   = useState({});
 
-  useEffect(() => { loadTodos(); loadMembers(); }, []);
+  useEffect(() => { loadTodos(); loadMembers(); loadFollowers(); }, []);
   useEffect(() => { if (selected) loadComments(selected.id); }, [selected]);
 
   async function loadTodos() {
@@ -99,6 +100,32 @@ export default function TodoPage() {
   async function loadMembers() {
     const { data } = await supabase.from("profiles").select("id, email, name").order("created_at");
     setMembers(data || []);
+  }
+
+  async function loadFollowers() {
+    const { data } = await supabase.from("todo_followers").select("*");
+    const map = {};
+    for (const f of (data || [])) {
+      if (!map[f.todo_id]) map[f.todo_id] = [];
+      map[f.todo_id].push(f.user_id);
+    }
+    setFollowers(map);
+  }
+
+  async function toggleFollower(todoId, userId) {
+    const list = followers[todoId] || [];
+    const on = list.includes(userId);
+    if (on) {
+      await supabase.from("todo_followers").delete().eq("todo_id", todoId).eq("user_id", userId);
+    } else {
+      await supabase.from("todo_followers").insert({ todo_id: todoId, user_id: userId });
+    }
+    setFollowers(prev => {
+      const next = { ...prev, [todoId]: [...(prev[todoId] || [])] };
+      if (on) next[todoId] = next[todoId].filter(id => id !== userId);
+      else next[todoId].push(userId);
+      return next;
+    });
   }
 
   async function loadComments(todoId) {
@@ -349,6 +376,18 @@ export default function TodoPage() {
               </div>;
             })()}
             {selected.note && <div style={{ fontSize: 12, color: "#4a4d5e", marginTop: 4 }}>{selected.note}</div>}
+            <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 11, color: "#4a4d5e", fontWeight: 700 }}>팔로워</span>
+              {members.map(m => {
+                const on = (followers[selected.id] || []).includes(m.id);
+                return (
+                  <button key={m.id} onClick={() => toggleFollower(selected.id, m.id)}
+                    style={{ fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 5, cursor: "pointer", border: `1px solid ${on ? "#7c5cfc" : "#1e2130"}`, background: on ? "#7c5cfc22" : "transparent", color: on ? "#7c5cfc" : "#4a4d5e" }}>
+                    {m.name || m.email?.split("@")[0]}
+                  </button>
+                );
+              })}
+            </div>
           </div>
 
           {cLoading ? (
