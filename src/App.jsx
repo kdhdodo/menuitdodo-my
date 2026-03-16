@@ -138,6 +138,16 @@ export default function App() {
 
   const visibleBytes = BYTES.filter(b => myBytes.includes(b.key));
 
+  async function openByte(url) {
+    const { data } = await supabase.auth.getSession();
+    const s = data?.session;
+    if (s) {
+      window.open(`${url}#access_token=${s.access_token}&refresh_token=${s.refresh_token}&type=magiclink`, "_blank");
+    } else {
+      window.open(url, "_blank");
+    }
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: "#0d0f14", fontFamily: FONT, color: "#e8eaf0" }}>
 
@@ -184,15 +194,15 @@ export default function App() {
           ) : (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12 }}>
               {visibleBytes.map(b => (
-                <a key={b.key} href={b.url} target="_blank" rel="noopener noreferrer"
-                  style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 12, padding: "20px 18px", textDecoration: "none", display: "block", cursor: "pointer" }}
+                <div key={b.key} onClick={() => openByte(b.url)}
+                  style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 12, padding: "20px 18px", display: "block", cursor: "pointer" }}
                   onMouseEnter={e => e.currentTarget.style.borderColor = b.color}
                   onMouseLeave={e => e.currentTarget.style.borderColor = "#1e2130"}>
                   <div style={{ fontSize: 26, marginBottom: 10 }}>{b.icon}</div>
                   <div style={{ fontSize: 15, fontWeight: 800, color: "#e8eaf0", marginBottom: 3 }}>{b.name}</div>
                   <div style={{ fontSize: 12, color: "#4a4d5e", marginBottom: 14 }}>{b.desc}</div>
                   <div style={{ fontSize: 11, color: b.color, fontWeight: 700 }}>열기 →</div>
-                </a>
+                </div>
               ))}
             </div>
           )}
