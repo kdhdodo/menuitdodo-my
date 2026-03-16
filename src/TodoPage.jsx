@@ -240,6 +240,11 @@ export default function TodoPage() {
     setComments(prev => prev.filter(c => c.id !== id));
   }
 
+  async function toggleComplete(id, current) {
+    await supabase.from("todo_comments").update({ completed: !current }).eq("id", id);
+    setComments(prev => prev.map(c => c.id === id ? { ...c, completed: !current } : c));
+  }
+
   function onDragStart(e, index) {
     dragItem.current = index;
     setDragIndex(index);
@@ -418,9 +423,13 @@ export default function TodoPage() {
                     <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ color: "#2a2d3a", fontSize: 14, cursor: "grab", userSelect: "none", letterSpacing: "-1px" }}>⠿</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#7c5cfc" }}>{c.author_name}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: c.completed ? "#4a4d5e" : "#7c5cfc", textDecoration: c.completed ? "line-through" : "none" }}>{c.author_name}</span>
                       </div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <button onClick={() => toggleComplete(c.id, c.completed)}
+                          style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${c.completed ? "#10b981" : "#2a2d3a"}`, background: c.completed ? "#10b981" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>
+                          {c.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                        </button>
                         <span style={{ fontSize: 11, color: "#4a4d5e" }}>{formatCommentDate(c.created_at)}</span>
                         <button onClick={() => removeComment(c.id)}
                           style={{ background: "transparent", border: "none", color: "#2a2d3a", fontSize: 14, cursor: "pointer", padding: 0 }}>×</button>
