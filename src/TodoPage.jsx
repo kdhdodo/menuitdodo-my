@@ -77,6 +77,11 @@ export default function TodoPage() {
   const [dragIndex, setDragIndex]   = useState(null);
   const [dropIndex, setDropIndex]   = useState(null);
   const [followers, setFollowers]   = useState({});
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyForm, setReplyForm]   = useState({ author_id: "", custom_name: "", content: "" });
+  const replyTextareaRef            = useRef(null);
+  const [replyMentionQuery, setReplyMentionQuery] = useState("");
+  const [showReplyMention, setShowReplyMention]   = useState(false);
 
   useEffect(() => { loadTodos(); loadMembers(); loadFollowers(); }, []);
   useEffect(() => { if (selected) loadComments(selected.id); }, [selected]);
@@ -234,6 +239,62 @@ export default function TodoPage() {
       }),
     });
   }
+
+  async function addReply(parentId) {
+    const isCustom = replyForm.author_id === "__custom__";
+    const authorName = isCustom
+      ? replyForm.custom_name.trim()
+      : (() => { const m = members.find(m => m.id === replyForm.author_id); return m?.name || m?.email || ""; })();
+    if (!authorName || !replyForm.content.trim()) return;
+    setSaving(true);
+    const contentText = replyForm.content.trim();
+    await supabase.from("todo_comments").insert({
+      todo_id:     selected.id,
+      parent_id:   parentId,
+      author_id:   isCustom ? null : replyForm.author_id,
+      author_name: authorName,
+      content:     contentText,
+    });
+    if (contentText) sendMentionNotifications(contentText, authorName);
+    setReplyForm(f => ({ ...f, content: "" }));
+    setReplyingTo(null);
+    setShowReplyMention(false);
+    setSaving(false);
+    loadComments(selected.id);
+  }
+
+  function handleReplyContentChange(e) {
+    const val = e.target.value;
+    const cursor = e.target.selectionStart;
+    const before = val.slice(0, cursor);
+    const match = before.match(/@([\w가-힣]*)$/);
+    if (match) { setReplyMentionQuery(match[1]); setShowReplyMention(true); }
+    else { setShowReplyMention(false); }
+    setReplyForm(f => ({ ...f, content: val }));
+  }
+
+  function selectReplyMention(member) {
+    const name = member.name || member.email.split("@")[0];
+    const cursor = replyTextareaRef.current?.selectionStart ?? replyForm.content.length;
+    const before = replyForm.content.slice(0, cursor);
+    const match = before.match(/@([\w가-힣]*)$/);
+    const start = match ? cursor - match[0].length : cursor;
+    const newContent = replyForm.content.slice(0, start) + `@${name} ` + replyForm.content.slice(cursor);
+    setReplyForm(f => ({ ...f, content: newContent }));
+    setShowReplyMention(false);
+    setTimeout(() => {
+      const pos = start + name.length + 2;
+      replyTextareaRef.current?.focus();
+      replyTextareaRef.current?.setSelectionRange(pos, pos);
+    }, 0);
+  }
+
+  const replyMentionMembers = showReplyMention
+    ? members.filter(m => {
+        const n = (m.name || m.email || "").toLowerCase();
+        return !replyMentionQuery || n.startsWith(replyMentionQuery.toLowerCase());
+      }).slice(0, 6)
+    : [];
 
   function renderContent(content) {
     if (!content) return null;
@@ -467,58 +528,138 @@ export default function TodoPage() {
 
           {cLoading ? (
             <div style={{ padding: 24, textAlign: "center", color: "#4a4d5e", fontSize: 13 }}>불러오는 중...</div>
-          ) : comments.length === 0 ? (
+          ) : comments.filter(c => !c.parent_id).length === 0 ? (
             <div style={{ padding: 24, textAlign: "center", color: "#4a4d5e", fontSize: 13 }}>아직 등록된 내용이 없습니다</div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 0, marginBottom: 24, position: "relative" }}>
               <div style={{ position: "absolute", left: 19, top: 0, bottom: 0, width: 2, background: "#1e2130" }} />
-              {comments.map((c, i) => (
-                <div key={c.id}
-                  draggable
-                  onDragStart={e => onDragStart(e, i)}
-                  onDragEnter={() => onDragEnter(i)}
-                  onDragEnd={onDragEnd}
-                  onDrop={onDrop}
-                  onDragOver={e => e.preventDefault()}
-                  style={{
-                    display: "flex", gap: 16, paddingBottom: 20, position: "relative",
-                    opacity: dragIndex === i ? 0.4 : 1,
-                    borderTop: dropIndex === i && dragIndex !== i ? "2px solid #7c5cfc" : "2px solid transparent",
-                    transition: "opacity 0.15s", cursor: "grab",
-                  }}>
-                  <div style={{ width: 40, flexShrink: 0, display: "flex", justifyContent: "center", paddingTop: 2 }}>
-                    <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#7c5cfc", border: "2px solid #0d0f14", zIndex: 1 }} />
-                  </div>
-                  <div style={{ flex: 1, background: "#11141c", border: "1px solid #1e2130", borderRadius: 10, padding: "12px 14px" }}>
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ color: "#2a2d3a", fontSize: 14, cursor: "grab", userSelect: "none", letterSpacing: "-1px" }}>⠿</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: c.completed ? "#4a4d5e" : "#7c5cfc", textDecoration: c.completed ? "line-through" : "none" }}>{c.author_name}</span>
+              {comments.filter(c => !c.parent_id).map((c, i) => {
+                const replies = comments.filter(r => r.parent_id === c.id);
+                return (
+                  <div key={c.id}>
+                    <div
+                      draggable
+                      onDragStart={e => onDragStart(e, i)}
+                      onDragEnter={() => onDragEnter(i)}
+                      onDragEnd={onDragEnd}
+                      onDrop={onDrop}
+                      onDragOver={e => e.preventDefault()}
+                      style={{
+                        display: "flex", gap: 16, paddingBottom: replyingTo === c.id || replies.length > 0 ? 8 : 20, position: "relative",
+                        opacity: dragIndex === i ? 0.4 : 1,
+                        borderTop: dropIndex === i && dragIndex !== i ? "2px solid #7c5cfc" : "2px solid transparent",
+                        transition: "opacity 0.15s", cursor: "grab",
+                      }}>
+                      <div style={{ width: 40, flexShrink: 0, display: "flex", justifyContent: "center", paddingTop: 2 }}>
+                        <div style={{ width: 12, height: 12, borderRadius: "50%", background: "#7c5cfc", border: "2px solid #0d0f14", zIndex: 1 }} />
                       </div>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <button onClick={() => toggleComplete(c.id, c.completed)}
-                          style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${c.completed ? "#10b981" : "#2a2d3a"}`, background: c.completed ? "#10b981" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>
-                          {c.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                      <div style={{ flex: 1, background: "#11141c", border: "1px solid #1e2130", borderRadius: 10, padding: "12px 14px" }}>
+                        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ color: "#2a2d3a", fontSize: 14, cursor: "grab", userSelect: "none", letterSpacing: "-1px" }}>⠿</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: c.completed ? "#4a4d5e" : "#7c5cfc", textDecoration: c.completed ? "line-through" : "none" }}>{c.author_name}</span>
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <button onClick={() => toggleComplete(c.id, c.completed)}
+                              style={{ width: 20, height: 20, borderRadius: "50%", border: `2px solid ${c.completed ? "#10b981" : "#2a2d3a"}`, background: c.completed ? "#10b981" : "transparent", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0, flexShrink: 0 }}>
+                              {c.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
+                            </button>
+                            <span style={{ fontSize: 11, color: "#4a4d5e" }}>{formatCommentDate(c.created_at)}</span>
+                            <button onClick={() => removeComment(c.id)}
+                              style={{ background: "transparent", border: "none", color: "#2a2d3a", fontSize: 14, cursor: "pointer", padding: 0 }}>×</button>
+                          </div>
+                        </div>
+                        {c.content && <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: (c.attachments?.length || c.links?.length) ? 10 : 0 }}>{renderContent(c.content)}</div>}
+                        {c.attachments?.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: c.links?.length ? 8 : 0 }}>
+                            {c.attachments.map((att, j) => <AttachmentView key={j} att={att} />)}
+                          </div>
+                        )}
+                        {c.links?.length > 0 && (
+                          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                            {c.links.map((link, j) => <LinkView key={j} link={link} />)}
+                          </div>
+                        )}
+                        <button onClick={() => { setReplyingTo(replyingTo === c.id ? null : c.id); setReplyForm(f => ({ ...f, content: "" })); setShowReplyMention(false); }}
+                          style={{ marginTop: 8, background: "transparent", border: "none", color: replyingTo === c.id ? "#7c5cfc" : "#4a4d5e", fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>
+                          ↩ 답글{replies.length > 0 ? ` (${replies.length})` : ""}
                         </button>
-                        <span style={{ fontSize: 11, color: "#4a4d5e" }}>{formatCommentDate(c.created_at)}</span>
-                        <button onClick={() => removeComment(c.id)}
-                          style={{ background: "transparent", border: "none", color: "#2a2d3a", fontSize: 14, cursor: "pointer", padding: 0 }}>×</button>
                       </div>
                     </div>
-                    {c.content && <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: (c.attachments?.length || c.links?.length) ? 10 : 0 }}>{renderContent(c.content)}</div>}
-                    {c.attachments?.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: c.links?.length ? 8 : 0 }}>
-                        {c.attachments.map((att, j) => <AttachmentView key={j} att={att} />)}
+                    {replies.length > 0 && (
+                      <div style={{ marginLeft: 56, marginBottom: replyingTo === c.id ? 8 : 20, display: "flex", flexDirection: "column", gap: 6 }}>
+                        {replies.map(r => (
+                          <div key={r.id} style={{ background: "#0d0f14", border: "1px solid #1e2130", borderRadius: 8, padding: "10px 12px" }}>
+                            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                              <span style={{ fontSize: 11, fontWeight: 700, color: "#4a9eff" }}>{r.author_name}</span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <span style={{ fontSize: 11, color: "#4a4d5e" }}>{formatCommentDate(r.created_at)}</span>
+                                <button onClick={() => removeComment(r.id)}
+                                  style={{ background: "transparent", border: "none", color: "#2a2d3a", fontSize: 13, cursor: "pointer", padding: 0 }}>×</button>
+                              </div>
+                            </div>
+                            {r.content && <div style={{ fontSize: 12, color: "#c8cad4", lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{renderContent(r.content)}</div>}
+                          </div>
+                        ))}
                       </div>
                     )}
-                    {c.links?.length > 0 && (
-                      <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                        {c.links.map((link, j) => <LinkView key={j} link={link} />)}
+                    {replyingTo === c.id && (
+                      <div style={{ marginLeft: 56, marginBottom: 20 }}>
+                        <div style={{ background: "#0d0f14", border: "1px solid #7c5cfc44", borderRadius: 8, padding: "10px 12px" }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "140px 1fr auto", gap: 8 }}>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                              <select value={replyForm.author_id} onChange={e => setReplyForm(f => ({ ...f, author_id: e.target.value, custom_name: "" }))}
+                                style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 6, padding: "6px 10px", color: replyForm.author_id ? "#e8eaf0" : "#4a4d5e", fontSize: 12, outline: "none", fontFamily: "inherit" }}>
+                                <option value="">작성자 선택</option>
+                                {members.map(m => <option key={m.id} value={m.id}>{m.name || m.email}</option>)}
+                                <option value="__custom__">직접 입력</option>
+                              </select>
+                              {replyForm.author_id === "__custom__" && (
+                                <input value={replyForm.custom_name} onChange={e => setReplyForm(f => ({ ...f, custom_name: e.target.value }))}
+                                  placeholder="이름 입력"
+                                  style={{ background: "#11141c", border: "1px solid #7c5cfc55", borderRadius: 6, padding: "6px 10px", color: "#e8eaf0", fontSize: 12, outline: "none", fontFamily: "inherit" }} />
+                              )}
+                            </div>
+                            <div style={{ position: "relative" }}>
+                              <textarea ref={replyTextareaRef} value={replyForm.content} onChange={handleReplyContentChange}
+                                onKeyDown={e => {
+                                  if (showReplyMention && replyMentionMembers.length > 0) {
+                                    if (e.key === "Escape") { e.preventDefault(); setShowReplyMention(false); return; }
+                                    if (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey)) { e.preventDefault(); selectReplyMention(replyMentionMembers[0]); return; }
+                                  }
+                                  if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); addReply(c.id); }
+                                  if (e.key === "Escape") { setReplyingTo(null); setShowReplyMention(false); }
+                                }}
+                                placeholder="답글 입력 (@멘션 가능)"
+                                rows={1}
+                                style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 6, padding: "7px 10px", color: "#e8eaf0", fontSize: 12, outline: "none", fontFamily: "inherit", resize: "none", overflowY: "hidden", lineHeight: 1.6, minHeight: 32, fieldSizing: "content", width: "100%", boxSizing: "border-box" }} />
+                              {showReplyMention && replyMentionMembers.length > 0 && (
+                                <div style={{ position: "absolute", bottom: "100%", left: 0, marginBottom: 4, background: "#1a1d26", border: "1px solid #1e2130", borderRadius: 8, overflow: "hidden", zIndex: 100, minWidth: 160, boxShadow: "0 4px 16px rgba(0,0,0,0.4)" }}>
+                                  {replyMentionMembers.map((m, idx) => (
+                                    <div key={m.id} onMouseDown={e => { e.preventDefault(); selectReplyMention(m); }}
+                                      style={{ padding: "7px 10px", fontSize: 12, cursor: "pointer", color: "#e8eaf0", borderBottom: idx < replyMentionMembers.length - 1 ? "1px solid #1e2130" : "none", display: "flex", alignItems: "center", gap: 6 }}
+                                      onMouseEnter={e => e.currentTarget.style.background = "#7c5cfc22"}
+                                      onMouseLeave={e => e.currentTarget.style.background = "transparent"}>
+                                      <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#7c5cfc44", border: "1px solid #7c5cfc88", display: "inline-flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 700, color: "#7c5cfc", flexShrink: 0 }}>
+                                        {(m.name || m.email || "?")[0].toUpperCase()}
+                                      </span>
+                                      <span>{m.name || m.email}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                            <button onClick={() => addReply(c.id)} disabled={saving || !replyForm.content.trim() || !replyForm.author_id}
+                              style={{ background: replyForm.content.trim() && replyForm.author_id ? "linear-gradient(135deg,#7c5cfc,#4a9eff)" : "#2a2d3a", border: "none", borderRadius: 6, padding: "7px 14px", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", alignSelf: "flex-start" }}>
+                              {saving ? "..." : "등록"}
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
 
