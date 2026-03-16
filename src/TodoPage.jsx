@@ -79,10 +79,17 @@ export default function TodoPage() {
 
   async function loadTodos() {
     setLoading(true);
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    if (!uid) { setLoading(false); return; }
+    const { data: follows } = await supabase.from("todo_followers").select("todo_id").eq("user_id", uid);
+    const ids = (follows || []).map(f => f.todo_id);
+    if (ids.length === 0) { setTodos([]); setLoading(false); return; }
     const { data } = await supabase
       .from("patent_todos")
       .select("*")
       .is("deleted_at", null)
+      .in("id", ids)
       .order("created_at", { ascending: false });
     setTodos(data || []);
     if (data?.length > 0) setSelected(prev => prev ?? data[0]);
