@@ -113,6 +113,13 @@ export default function App() {
     setNickSaving(false);
   }
 
+  // LOUNGE 탭에서 bytes가 비어있으면 다시 로드
+  useEffect(() => {
+    if (tab === "lounge" && session && myBytes.length === 0) {
+      loadAll(session.user.id);
+    }
+  }, [tab]);
+
   if (loading) return (
     <div style={{ minHeight: "100vh", background: "#0d0f14", display: "flex", alignItems: "center", justifyContent: "center", color: "#4a4d5e", fontFamily: FONT }}>
       로딩 중...
@@ -140,13 +147,6 @@ export default function App() {
       </div>
     </div>
   );
-
-  // LOUNGE 탭에서 bytes가 비어있으면 다시 로드
-  useEffect(() => {
-    if (tab === "lounge" && session && myBytes.length === 0) {
-      loadAll(session.user.id);
-    }
-  }, [tab]);
 
   const visibleBytes = BYTES.filter(b => myBytes.includes(b.key));
 
