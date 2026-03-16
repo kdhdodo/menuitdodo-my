@@ -96,12 +96,12 @@ export default function App() {
   }, []);
 
   async function loadAll(uid) {
-    const [{ data: prof }, { data: bm }] = await Promise.all([
+    const [{ data: prof }, { data: bm, error: bmErr }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", uid).single(),
       supabase.from("byte_members").select("byte_key").eq("user_id", uid),
     ]);
-    setProfile(prof);
-    setMyBytes((bm || []).map(b => b.byte_key));
+    if (prof) setProfile(prof);
+    if (!bmErr) setMyBytes((bm || []).map(b => b.byte_key));
     setLoading(false);
   }
 
@@ -140,6 +140,13 @@ export default function App() {
       </div>
     </div>
   );
+
+  // LOUNGE 탭에서 bytes가 비어있으면 다시 로드
+  useEffect(() => {
+    if (tab === "lounge" && session && myBytes.length === 0) {
+      loadAll(session.user.id);
+    }
+  }, [tab]);
 
   const visibleBytes = BYTES.filter(b => myBytes.includes(b.key));
 
