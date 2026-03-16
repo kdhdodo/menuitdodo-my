@@ -80,6 +80,7 @@ export default function TodoPage() {
   const [unreadMentions, setUnreadMentions] = useState(new Set());
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyForm, setReplyForm]   = useState({ author_id: "", custom_name: "", content: "" });
+  const [editingComment, setEditingComment] = useState(null);
   const replyTextareaRef            = useRef(null);
   const [replyMentionQuery, setReplyMentionQuery] = useState("");
   const [showReplyMention, setShowReplyMention]   = useState(false);
@@ -397,6 +398,13 @@ export default function TodoPage() {
     setComments(prev => prev.filter(c => c.id !== id));
   }
 
+  async function updateComment(id, content) {
+    if (!content.trim()) return;
+    await supabase.from("todo_comments").update({ content: content.trim() }).eq("id", id);
+    setComments(prev => prev.map(c => c.id === id ? { ...c, content: content.trim() } : c));
+    setEditingComment(null);
+  }
+
   async function toggleComplete(id, current) {
     await supabase.from("todo_comments").update({ completed: !current }).eq("id", id);
     setComments(prev => prev.map(c => c.id === id ? { ...c, completed: !current } : c));
@@ -594,11 +602,31 @@ export default function TodoPage() {
                               {c.completed && <span style={{ color: "#fff", fontSize: 11, fontWeight: 900 }}>✓</span>}
                             </button>
                             <span style={{ fontSize: 11, color: "#4a4d5e" }}>{formatCommentDate(c.created_at)}</span>
+                            <button onClick={() => setEditingComment(editingComment?.id === c.id ? null : { id: c.id, content: c.content || "" })}
+                              style={{ background: "transparent", border: "none", color: editingComment?.id === c.id ? "#7c5cfc" : "#2a2d3a", fontSize: 11, fontWeight: 700, cursor: "pointer", padding: 0 }}>수정</button>
                             <button onClick={() => removeComment(c.id)}
                               style={{ background: "transparent", border: "none", color: "#2a2d3a", fontSize: 14, cursor: "pointer", padding: 0 }}>×</button>
                           </div>
                         </div>
-                        {c.content && <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: (c.attachments?.length || c.links?.length) ? 10 : 0 }}>{renderContent(c.content)}</div>}
+                        {editingComment?.id === c.id ? (
+                          <div style={{ marginTop: 4 }}>
+                            <textarea value={editingComment.content}
+                              onChange={e => setEditingComment(ec => ({ ...ec, content: e.target.value }))}
+                              onKeyDown={e => {
+                                if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); updateComment(c.id, editingComment.content); }
+                                if (e.key === "Escape") setEditingComment(null);
+                              }}
+                              autoFocus
+                              rows={2}
+                              style={{ width: "100%", boxSizing: "border-box", background: "#0d0f14", border: "1px solid #7c5cfc55", borderRadius: 6, padding: "7px 10px", color: "#e8eaf0", fontSize: 13, outline: "none", fontFamily: "inherit", resize: "none", lineHeight: 1.6 }} />
+                            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                              <button onClick={() => updateComment(c.id, editingComment.content)}
+                                style={{ background: "linear-gradient(135deg,#7c5cfc,#4a9eff)", border: "none", borderRadius: 6, padding: "5px 14px", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>저장</button>
+                              <button onClick={() => setEditingComment(null)}
+                                style={{ background: "transparent", border: "1px solid #1e2130", borderRadius: 6, padding: "5px 14px", color: "#4a4d5e", fontSize: 12, cursor: "pointer" }}>취소</button>
+                            </div>
+                          </div>
+                        ) : c.content && <div style={{ fontSize: 13, color: "#e8eaf0", lineHeight: 1.6, whiteSpace: "pre-wrap", marginBottom: (c.attachments?.length || c.links?.length) ? 10 : 0 }}>{renderContent(c.content)}</div>}
                         {c.attachments?.length > 0 && (
                           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: c.links?.length ? 8 : 0 }}>
                             {c.attachments.map((att, j) => <AttachmentView key={j} att={att} />)}
