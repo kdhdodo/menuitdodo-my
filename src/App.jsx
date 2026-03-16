@@ -14,7 +14,7 @@ const BYTES = [
 ];
 
 
-function PasswordModal({ onClose }) {
+function PasswordModal({ onClose, required = false }) {
   const [pw, setPw]         = useState("");
   const [pw2, setPw2]       = useState("");
   const [saving, setSaving] = useState(false);
@@ -33,8 +33,8 @@ function PasswordModal({ onClose }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, fontFamily: FONT }}>
       <div style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 14, padding: "36px 32px", width: 360, boxSizing: "border-box" }}>
-        <div style={{ fontSize: 18, fontWeight: 800, color: "#e8eaf0", marginBottom: 6 }}>비밀번호 변경</div>
-        <div style={{ fontSize: 13, color: "#4a4d5e", marginBottom: 24 }}>새 비밀번호를 입력해주세요 (6자 이상)</div>
+        <div style={{ fontSize: 18, fontWeight: 800, color: "#e8eaf0", marginBottom: 6 }}>비밀번호 설정</div>
+        <div style={{ fontSize: 13, color: "#4a4d5e", marginBottom: 24 }}>사용할 비밀번호를 설정해주세요 (6자 이상)</div>
         <input type="password" value={pw} onChange={e => setPw(e.target.value)} placeholder="새 비밀번호"
           style={{ width: "100%", boxSizing: "border-box", background: "#0d0f14", border: "1px solid #1e2130", borderRadius: 8, padding: "10px 12px", color: "#e8eaf0", fontSize: 14, outline: "none", fontFamily: "inherit", marginBottom: 10 }} />
         <input type="password" value={pw2} onChange={e => setPw2(e.target.value)} onKeyDown={e => e.key === "Enter" && save()} placeholder="비밀번호 확인"
@@ -43,12 +43,14 @@ function PasswordModal({ onClose }) {
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={save} disabled={saving}
             style={{ flex: 1, background: "linear-gradient(135deg,#7c5cfc,#4a9eff)", border: "none", borderRadius: 8, padding: "11px", color: "#fff", fontSize: 14, fontWeight: 700, cursor: "pointer" }}>
-            {saving ? "저장 중..." : "변경하기"}
+            {saving ? "저장 중..." : "설정하기"}
           </button>
-          <button onClick={onClose}
-            style={{ flex: 1, background: "transparent", border: "1px solid #1e2130", borderRadius: 8, padding: "11px", color: "#4a4d5e", fontSize: 14, cursor: "pointer" }}>
-            취소
-          </button>
+          {!required && (
+            <button onClick={onClose}
+              style={{ flex: 1, background: "transparent", border: "1px solid #1e2130", borderRadius: 8, padding: "11px", color: "#4a4d5e", fontSize: 14, cursor: "pointer" }}>
+              취소
+            </button>
+          )}
         </div>
       </div>
     </div>
@@ -67,14 +69,23 @@ export default function App() {
   const [tab, setTab]                   = useState("todo");
 
   useEffect(() => {
-    const hash = window.location.hash;
-    if (hash.includes("type=invite")) setIsFirstLogin(true);
+    async function init() {
+      const hash = window.location.hash;
+      if (hash.includes("type=invite")) setIsFirstLogin(true);
 
-    supabase.auth.getSession().then(({ data }) => {
+      const params = new URLSearchParams(hash.substring(1));
+      const at = params.get("access_token"), rt = params.get("refresh_token");
+      if (at && rt) {
+        await supabase.auth.setSession({ access_token: at, refresh_token: rt });
+        window.history.replaceState(null, "", window.location.pathname);
+      }
+
+      const { data } = await supabase.auth.getSession();
       setSession(data.session);
       if (data.session) loadAll(data.session.user.id);
       else setLoading(false);
-    });
+    }
+    init();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, s) => {
       if (event === "USER_UPDATED") return;
       setSession(s);
@@ -111,7 +122,7 @@ export default function App() {
 
   if (isFirstLogin) return (
     <div style={{ minHeight: "100vh", background: "#0d0f14", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: FONT }}>
-      <PasswordModal onClose={() => setIsFirstLogin(false)} />
+      <PasswordModal onClose={() => setIsFirstLogin(false)} required />
     </div>
   );
 
