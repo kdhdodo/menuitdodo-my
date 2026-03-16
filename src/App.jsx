@@ -64,7 +64,7 @@ export default function App() {
   const [nickSaving, setNickSaving]     = useState(false);
   const [showPwModal, setShowPwModal]   = useState(false);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
-  const [tab, setTab]                   = useState("lounge");
+  const [tab, setTab]                   = useState("todo");
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -157,7 +157,7 @@ export default function App() {
             </div>
           </div>
           <div style={{ display: "flex", gap: 4 }}>
-            {[["lounge", "LOUNGE"], ["todo", "TODO"]].map(([key, label]) => (
+            {[["todo", "TODO"], ["lounge", "LOUNGE"]].map(([key, label]) => (
               <div key={key} onClick={() => setTab(key)}
                 style={{ padding: "0 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
                   color: tab === key ? "#7c5cfc" : "#4a4d5e",
