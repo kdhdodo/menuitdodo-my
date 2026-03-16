@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./supabase";
 import Login from "./Login";
+import TodoPage from "./TodoPage";
 
 const FONT = "'Noto Sans KR','Apple SD Gothic Neo','Malgun Gothic',sans-serif";
 
@@ -12,11 +13,6 @@ const BYTES = [
   { key: "sales", name: "영업",     desc: "영업 관리",   url: "https://menuitdodo-sales.vercel.app", color: "#ff5050", icon: "📊" },
 ];
 
-const STATUS_COLOR = {
-  "진행중": "#f59e0b",
-  "완료":   "#10b981",
-  "보류":   "#4a4d5e",
-};
 
 function PasswordModal({ onClose }) {
   const [pw, setPw]         = useState("");
@@ -64,11 +60,11 @@ export default function App() {
   const [loading, setLoading]           = useState(true);
   const [profile, setProfile]           = useState(null);
   const [myBytes, setMyBytes]           = useState([]);
-  const [todos, setTodos]               = useState([]);
   const [nickname, setNickname]         = useState("");
   const [nickSaving, setNickSaving]     = useState(false);
   const [showPwModal, setShowPwModal]   = useState(false);
   const [isFirstLogin, setIsFirstLogin] = useState(false);
+  const [tab, setTab]                   = useState("lounge");
 
   useEffect(() => {
     const hash = window.location.hash;
@@ -89,14 +85,12 @@ export default function App() {
   }, []);
 
   async function loadAll(uid) {
-    const [{ data: prof }, { data: bm }, { data: td }] = await Promise.all([
+    const [{ data: prof }, { data: bm }] = await Promise.all([
       supabase.from("profiles").select("*").eq("id", uid).single(),
       supabase.from("byte_members").select("byte_key").eq("user_id", uid),
-      supabase.from("patent_todos").select("*").is("deleted_at", null).order("created_at", { ascending: false }),
     ]);
     setProfile(prof);
     setMyBytes((bm || []).map(b => b.byte_key));
-    setTodos(td || []);
     setLoading(false);
   }
 
@@ -155,10 +149,23 @@ export default function App() {
 
       {/* 헤더 */}
       <div style={{ background: "#11141c", borderBottom: "1px solid #1e2130", padding: "0 32px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 56 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{ width: 28, height: 28, background: "linear-gradient(135deg,#7c5cfc,#4a9eff)", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff" }}>M</div>
-          <div style={{ fontSize: 15, fontWeight: 800, background: "linear-gradient(135deg,#7c5cfc,#4a9eff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-            my.menuit.io
+        <div style={{ display: "flex", alignItems: "center", gap: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 28, height: 28, background: "linear-gradient(135deg,#7c5cfc,#4a9eff)", borderRadius: 7, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 800, color: "#fff" }}>M</div>
+            <div style={{ fontSize: 15, fontWeight: 800, background: "linear-gradient(135deg,#7c5cfc,#4a9eff)", WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
+              my.menuit.io
+            </div>
+          </div>
+          <div style={{ display: "flex", gap: 4 }}>
+            {[["lounge", "LOUNGE"], ["todo", "TODO"]].map(([key, label]) => (
+              <div key={key} onClick={() => setTab(key)}
+                style={{ padding: "0 14px", fontSize: 13, fontWeight: 700, cursor: "pointer",
+                  color: tab === key ? "#7c5cfc" : "#4a4d5e",
+                  borderBottom: tab === key ? "2px solid #7c5cfc" : "2px solid transparent",
+                  height: 56, display: "flex", alignItems: "center" }}>
+                {label}
+              </div>
+            ))}
           </div>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -174,18 +181,20 @@ export default function App() {
         </div>
       </div>
 
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "36px 24px" }}>
+      {tab === "todo" && <TodoPage />}
 
-        {/* 인사말 */}
-        <div style={{ marginBottom: 40 }}>
-          <div style={{ fontSize: 22, fontWeight: 800, color: "#e8eaf0", marginBottom: 4 }}>
-            안녕하세요, {profile?.name || ""}님
+      {tab === "lounge" && (
+        <div style={{ maxWidth: 1000, margin: "0 auto", padding: "36px 24px" }}>
+
+          {/* 인사말 */}
+          <div style={{ marginBottom: 40 }}>
+            <div style={{ fontSize: 22, fontWeight: 800, color: "#e8eaf0", marginBottom: 4 }}>
+              안녕하세요, {profile?.name || ""}님
+            </div>
+            <div style={{ fontSize: 13, color: "#4a4d5e" }}>오늘도 좋은 하루 보내세요</div>
           </div>
-          <div style={{ fontSize: 13, color: "#4a4d5e" }}>오늘도 좋은 하루 보내세요</div>
-        </div>
 
-        {/* 내 바이트 */}
-        <div style={{ marginBottom: 44 }}>
+          {/* 내 바이트 */}
           <div style={{ fontSize: 12, fontWeight: 700, color: "#4a4d5e", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.08em" }}>내 바이트</div>
           {visibleBytes.length === 0 ? (
             <div style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 10, padding: "28px", textAlign: "center", fontSize: 13, color: "#4a4d5e" }}>
@@ -206,46 +215,9 @@ export default function App() {
               ))}
             </div>
           )}
-        </div>
 
-        {/* 내 TODO */}
-        <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#4a4d5e", marginBottom: 14, textTransform: "uppercase", letterSpacing: "0.08em" }}>내 TODO</div>
-          {todos.length === 0 ? (
-            <div style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 10, padding: "28px", textAlign: "center", fontSize: 13, color: "#4a4d5e" }}>
-              할 일이 없습니다
-            </div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-              {todos.map(t => {
-                const dl = t.due_date ? Math.ceil((new Date(t.due_date) - new Date()) / 86400000) : null;
-                return (
-                  <div key={t.id} style={{ background: "#11141c", border: "1px solid #1e2130", borderRadius: 10, padding: "13px 16px", display: "flex", alignItems: "center", gap: 12 }}>
-                    <div style={{ width: 7, height: 7, borderRadius: "50%", background: STATUS_COLOR[t.status] || "#4a4d5e", flexShrink: 0 }} />
-                    <div style={{ flex: 1, fontSize: 14, color: "#e8eaf0", fontWeight: 600 }}>{t.title}</div>
-                    {t.note && <div style={{ fontSize: 12, color: "#4a4d5e", maxWidth: 280, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.note}</div>}
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
-                      {dl !== null && (
-                        <span style={{ fontSize: 11, fontWeight: 700, color: dl < 0 ? "#ff5050" : dl <= 3 ? "#f59e0b" : "#4a4d5e" }}>
-                          {dl < 0 ? `D+${Math.abs(dl)}` : dl === 0 ? "D-day" : `D-${dl}`}
-                        </span>
-                      )}
-                      <span style={{ fontSize: 11, fontWeight: 700,
-                        color: STATUS_COLOR[t.status] || "#4a4d5e",
-                        background: (STATUS_COLOR[t.status] || "#4a4d5e") + "22",
-                        border: `1px solid ${(STATUS_COLOR[t.status] || "#4a4d5e")}55`,
-                        borderRadius: 4, padding: "2px 7px" }}>
-                        {t.status || "진행중"}
-                      </span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
-
-      </div>
+      )}
     </div>
   );
 }
