@@ -77,14 +77,31 @@ export default function TodoPage() {
   const [dragIndex, setDragIndex]   = useState(null);
   const [dropIndex, setDropIndex]   = useState(null);
   const [followers, setFollowers]   = useState({});
+  const [unreadMentions, setUnreadMentions] = useState(new Set());
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyForm, setReplyForm]   = useState({ author_id: "", custom_name: "", content: "" });
   const replyTextareaRef            = useRef(null);
   const [replyMentionQuery, setReplyMentionQuery] = useState("");
   const [showReplyMention, setShowReplyMention]   = useState(false);
 
-  useEffect(() => { loadTodos(); loadMembers(); loadFollowers(); }, []);
+  useEffect(() => { loadTodos(); loadMembers(); loadFollowers(); loadUnreadMentions(); }, []);
   useEffect(() => { if (selected) loadComments(selected.id); }, [selected]);
+
+  async function loadUnreadMentions() {
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    if (!uid) return;
+    const { data } = await supabase.from("mention_reads").select("todo_id").eq("user_id", uid);
+    setUnreadMentions(new Set((data || []).map(r => r.todo_id)));
+  }
+
+  async function markMentionRead(todoId) {
+    const { data: { session } } = await supabase.auth.getSession();
+    const uid = session?.user?.id;
+    if (!uid) return;
+    await supabase.from("mention_reads").delete().eq("user_id", uid).eq("todo_id", todoId);
+    setUnreadMentions(prev => { const next = new Set(prev); next.delete(todoId); return next; });
+  }
 
   async function loadTodos() {
     setLoading(true);
@@ -101,7 +118,15 @@ export default function TodoPage() {
       .in("id", ids)
       .order("created_at", { ascending: false });
     setTodos(data || []);
-    if (data?.length > 0) setSelected(prev => prev ?? data[0]);
+    const params = new URLSearchParams(window.location.search);
+    const todoParam = params.get("todo");
+    if (todoParam && data) {
+      const target = data.find(t => t.id === todoParam);
+      if (target) setSelected(target);
+      window.history.replaceState(null, "", window.location.pathname);
+    } else if (data?.length > 0) {
+      setSelected(prev => prev ?? data[0]);
+    }
     setLoading(false);
   }
 
@@ -232,6 +257,7 @@ export default function TodoPage() {
       headers: { "Content-Type": "application/json", "apikey": ANON_KEY, "Authorization": `Bearer ${ANON_KEY}` },
       body: JSON.stringify({
         action: "notify",
+        todoId: selected?.id,
         todoTitle: selected?.title,
         authorName,
         content,
@@ -469,13 +495,16 @@ export default function TodoPage() {
             const dl = daysLeft(t.due_date);
             const urgent = dl !== null && dl <= 7;
             return (
-              <div key={t.id} onClick={() => setSelected(selected?.id === t.id ? null : t)}
+              <div key={t.id} onClick={() => { setSelected(selected?.id === t.id ? null : t); if (unreadMentions.has(t.id)) markMentionRead(t.id); }}
                 style={{
                   background: selected?.id === t.id ? "#151820" : "#11141c",
                   border: `1px solid ${selected?.id === t.id ? (STATUS_COLOR[t.status] || "#7c5cfc") : "#1e2130"}`,
                   borderRadius: 10, padding: "12px 16px", cursor: "pointer", minWidth: 160, position: "relative",
                 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#e8eaf0", marginBottom: 6, paddingRight: 20 }}>{t.title}</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#e8eaf0", marginBottom: 6, paddingRight: 20, display: "flex", alignItems: "center", gap: 6 }}>
+                  {t.title}
+                  {unreadMentions.has(t.id) && <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#ff5050", flexShrink: 0, display: "inline-block" }} />}
+                </div>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: t.due_date ? 4 : 0 }}>
                   <select value={t.status || "진행중"}
                     onClick={e => e.stopPropagation()}
